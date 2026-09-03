@@ -4,13 +4,14 @@ import requests
 # API Endpoint & Parameters
 URL = "https://prod-nz-rdr.recreation-management.tylerapp.com/nzrdr/rdr/search/greatwalkplacefacility"
 
-TARGET_DATE = "2027-02-15"  # YYYY-MM-DD
-PLACE_ID = 880               # Paparoa Track ID
-NIGHTS_COUNT = 12            # Date window range
-WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
+PLACE_ID = 880            # Paparoa Track ID
+START_DATE = "2027-02-15" # YYYY-MM-DD: Start date to check
+DAYS_TO_CHECK = 12        # Number of days to check starting from START_DATE
 
-# Optional: Set to a specific hut name (e.g., "Moonlight Tops Hut"), or None to check all huts on the track
-TARGET_HUT_NAME = None 
+# Optional: Set to a specific hut name (e.g., "Moonlight Tops Hut"), or set to None to check all huts
+TARGET_HUT_NAME = "Moonlight Tops Hut"
+
+WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
 HEADERS = {
     "accept": "application/json",
@@ -25,14 +26,15 @@ PAYLOAD = {
     "accomodation": "",
     "placeId": PLACE_ID,
     "customerClassificationId": 0,
-    "arrivalDate": TARGET_DATE,
-    "nights": NIGHTS_COUNT
+    "arrivalDate": START_DATE,
+    "nights": DAYS_TO_CHECK
 }
 
 def send_alert(message):
     print(message)
     if WEBHOOK_URL:
-        requests.post(WEBHOOK_URL, json={"content": message})
+        payload = {"content": message[:1900]}
+        requests.post(WEBHOOK_URL, json=payload)
 
 def check_availability():
     try:
@@ -41,29 +43,43 @@ def check_availability():
         data = response.json()
 
         facilities = data.get("GreatWalkFacilityData", [])
-        available_spots = []
+        availability_report = []
 
         for facility in facilities:
             facility_name = facility.get("FacilityName", "Unknown Hut")
 
-            # Skip if filtering for a single specific hut
+            # Filter for a specific hut if TARGET_HUT_NAME is set
             if TARGET_HUT_NAME and TARGET_HUT_NAME.lower() not in facility_name.lower():
                 continue
 
             date_records = facility.get("GreatWalkFacilityDateData", [])
+
+            open_dates_for_hut = []
             for record in date_records:
-                arrival_date = record.get("ArrivalDate", "")
                 total_available = record.get("TotalAvailable", 0)
+                arrival_date_raw = record.get("ArrivalDate", "")
+                
+                # Extract YYYY-MM-DD string
+                date_only = arrival_date_raw.split("T")[0]
 
-                # Match date (formatted as "2027-02-15T00:00:00") and check for open bunks
-                if arrival_date.startswith(TARGET_DATE) and total_available > 0:
-                    available_spots.append(f"• **{facility_name}**: {total_available} spot(s) open")
+                if total_available > 0:
+                    open_dates_for_hut.append(f"  • **{date_only}**: {total_available} spot(s) available")
 
-        if available_spots:
-            alert_message = f"🚨 **DOC Spot Available for {TARGET_DATE}!**\n" + "\n".join(available_spots)
-            send_alert(alert_message)
+            if open_dates_for_hut:
+                hut_summary = f"🏠 **{facility_name}**:\n" + "\n".join(open_dates_for_hut)
+                availability_report.append(hut_summary)
+
+        if availability_report:
+            filter_text = f" for {TARGET_HUT_NAME}" if TARGET_HUT_NAME else ""
+            report_message = (
+                f"🚨 **DOC Availability Report{filter_text}**\n"
+                f"Checking {DAYS_TO_CHECK} days starting {START_DATE}:\n\n"
+                + "\n\n".join(availability_report)
+            )
+            send_alert(report_message)
         else:
-            print(f"Checked: No availability found for {TARGET_DATE}.")
+            target_scope = TARGET_HUT_NAME if TARGET_HUT_NAME else f"placeId {PLACE_ID}"
+            print(f"Checked {DAYS_TO_CHECK} days starting {START_DATE} for {target_scope}: No spots available.")
 
     except Exception as e:
         print(f"Error checking availability: {e}")
