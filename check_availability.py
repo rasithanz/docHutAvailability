@@ -9,7 +9,7 @@ START_DATE = "2027-02-15" # YYYY-MM-DD: Start date to check
 DAYS_TO_CHECK = 12        # Number of days to check starting from START_DATE
 
 # Optional: Set to a specific hut name (e.g., "Moonlight Tops Hut"), or set to None to check all huts
-TARGET_HUT_NAME = "None"
+TARGET_HUT_NAME = None
 
 WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
